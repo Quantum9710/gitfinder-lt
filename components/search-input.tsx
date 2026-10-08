@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { AudioRecorder } from '@/components/audio-recorder'
 import { cn } from '@/lib/utils'
 
 export type SearchType = 'repositories' | 'users'
@@ -260,6 +261,20 @@ export function SearchInput({
                 <span>K</span>
               </div>
             )}
+
+            {/* Microphone Voice Input (gemini-3.5-transcribe) */}
+            <AudioRecorder
+              variant="ghost"
+              size="sm"
+              className="size-8 text-muted-foreground hover:text-foreground"
+              onTranscribeComplete={(text) => {
+                if (!isControlled) {
+                  setInternalValue(text)
+                }
+                controlledOnChange?.(text)
+                onSearch(text, searchType, sortBy)
+              }}
+            />
 
             {/* shadcn Submit Button */}
             <Button

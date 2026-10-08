@@ -2,8 +2,39 @@
 
 import * as React from 'react'
 import { SearchInput, SearchType, SortOption } from '@/components/search-input'
-import { GitHubResults, GitHubRepoItem, GitHubUserItem } from '@/components/github-results'
-import { GitBranch, Sparkles, BookMarked, Search, Code2 } from 'lucide-react'
+import {
+  GitHubResults,
+  GitHubRepoItem,
+  GitHubUserItem,
+} from '@/components/github-results'
+import { AIAdvisorDrawer } from '@/components/ai-advisor-drawer'
+import { LiveVoiceDialog } from '@/components/live-voice-dialog'
+import { BookmarksModal } from '@/components/bookmarks-modal'
+import {
+  auth,
+  signInWithGoogle,
+  logOut,
+  testFirebaseConnection,
+  subscribeToBookmarks,
+  saveRepositoryBookmark,
+  removeRepositoryBookmark,
+  SavedBookmark,
+} from '@/lib/firebase'
+import { onAuthStateChanged, User } from 'firebase/auth'
+import {
+  Search,
+  Sparkles,
+  GitBranch,
+  Bot,
+  Radio,
+  BookMarked,
+  LogIn,
+  LogOut,
+  Globe,
+  Mic,
+  ShieldCheck,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 export default function Page() {
   const [query, setQuery] = React.useState('')
@@ -16,6 +47,50 @@ export default function Page() {
     total_count: number
     query: string
   } | null>(null)
+
+  // Firebase auth & firestore bookmarks
+  const [currentUser, setCurrentUser] = React.useState<User | null>(null)
+  const [authLoading, setAuthLoading] = React.useState(true)
+  const [bookmarks, setBookmarks] = React.useState<SavedBookmark[]>([])
+  const [firebaseConnected, setFirebaseConnected] = React.useState<boolean | null>(null)
+
+  // Dialog / Drawer states
+  const [isAIDrawerOpen, setIsAIDrawerOpen] = React.useState(false)
+  const [isLiveVoiceOpen, setIsLiveVoiceOpen] = React.useState(false)
+  const [isBookmarksOpen, setIsBookmarksOpen] = React.useState(false)
+  const [aiContextRepo, setAiContextRepo] = React.useState<string | undefined>(undefined)
+
+  // Monitor Firebase auth & test connection
+  React.useEffect(() => {
+    testFirebaseConnection().then(setFirebaseConnected)
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user)
+      setAuthLoading(false)
+    })
+
+    return () => unsubscribeAuth()
+  }, [])
+
+  // Subscribe to user's Firestore bookmarks
+  React.useEffect(() => {
+    if (!currentUser) {
+      setBookmarks([])
+      return
+    }
+
+    const unsubscribeBookmarks = subscribeToBookmarks(
+      currentUser.uid,
+      (items) => setBookmarks(items),
+      (err) => console.error('Firestore bookmarks subscription error:', err)
+    )
+
+    return () => unsubscribeBookmarks()
+  }, [currentUser])
+
+  const bookmarkedIds = React.useMemo(() => {
+    return new Set(bookmarks.map((b) => b.repoId))
+  }, [bookmarks])
 
   const handleSearch = async (
     searchQuery: string,
@@ -63,33 +138,130 @@ export default function Page() {
     handleSearch(presetQuery, type, 'stars')
   }
 
+  const handleBookmarkToggle = async (repo: GitHubRepoItem) => {
+    if (!currentUser) {
+      // Prompt sign in
+      try {
+        await signInWithGoogle()
+      } catch (e) {
+        console.error(e)
+      }
+      return
+    }
+
+    if (bookmarkedIds.has(repo.id)) {
+      await removeRepositoryBookmark(currentUser.uid, repo.id)
+    } else {
+      await saveRepositoryBookmark(currentUser, repo)
+    }
+  }
+
+  const handleAskAI = (repoFullName: string) => {
+    setAiContextRepo(repoFullName)
+    setIsAIDrawerOpen(true)
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Top Navbar */}
+      {/* Top Navigation Bar */}
       <header className="border-b border-border/70 sticky top-0 z-20 bg-background/85 backdrop-blur-md">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+          {/* Brand */}
           <div className="flex items-center gap-2.5">
             <div className="size-8 rounded-lg bg-foreground text-background flex items-center justify-center font-bold text-sm tracking-tight shadow-xs">
               <Search className="size-4" />
             </div>
             <div>
               <span className="font-semibold text-sm tracking-tight">GitFinder</span>
-              <span className="text-[10px] font-mono ml-1.5 px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
+              <span className="text-[10px] font-mono ml-1 px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
                 LT
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <a
-              href="https://github.com/Quantum9710/gitfinder-lt"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-md hover:bg-muted transition-colors"
+          {/* Quick Feature Action Buttons */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Live Voice API Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsLiveVoiceOpen(true)}
+              className="h-8 gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+              title="Live Voice Conversation (gemini-3.8-live)"
             >
-              <GitBranch className="size-3.5" />
-              <span className="hidden sm:inline">Quantum9710/gitfinder-lt</span>
-            </a>
+              <Radio className="size-3.5 animate-pulse text-emerald-500" />
+              <span className="hidden sm:inline">Live Voice</span>
+            </Button>
+
+            {/* AI Advisor with Search Grounding Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAiContextRepo(undefined)
+                setIsAIDrawerOpen(true)
+              }}
+              className="h-8 gap-1.5 text-xs"
+              title="AI Advisor with Google Search Grounding"
+            >
+              <Bot className="size-3.5 text-primary" />
+              <span className="hidden sm:inline">AI Advisor</span>
+              <span className="hidden md:inline-flex items-center gap-0.5 text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1 py-0.2 rounded font-medium">
+                <Globe className="size-2.5" /> Grounded
+              </span>
+            </Button>
+
+            {/* Bookmarks Modal Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsBookmarksOpen(true)}
+              className="h-8 gap-1.5 text-xs relative"
+              title="Saved Firestore Bookmarks"
+            >
+              <BookMarked className="size-3.5" />
+              <span className="hidden sm:inline">Bookmarks</span>
+              {bookmarks.length > 0 && (
+                <span className="size-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-bold">
+                  {bookmarks.length}
+                </span>
+              )}
+            </Button>
+
+            <div className="h-4 w-px bg-border mx-0.5" />
+
+            {/* Firebase Google Auth Button */}
+            {authLoading ? (
+              <div className="size-8 rounded-full bg-muted animate-pulse" />
+            ) : currentUser ? (
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={currentUser.photoURL || '/placeholder-user.jpg'}
+                  alt={currentUser.displayName || 'User'}
+                  className="size-7 rounded-full border border-border object-cover"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => logOut()}
+                  className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  title="Sign out"
+                >
+                  <LogOut className="size-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => signInWithGoogle()}
+                className="h-8 gap-1.5 text-xs"
+              >
+                <LogIn className="size-3.5" />
+                <span>Sign In</span>
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -98,19 +270,30 @@ export default function Page() {
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8 sm:py-12 space-y-8">
         {/* Hero Section */}
         <div className="text-center space-y-3 max-w-2xl mx-auto pt-2">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-muted border border-border/80 text-muted-foreground mb-1">
-            <Sparkles className="size-3 text-amber-500" />
-            <span>GitHub Discovery Platform</span>
+          <div className="inline-flex flex-wrap items-center justify-center gap-2">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-muted border border-border/80 text-muted-foreground">
+              <Sparkles className="size-3 text-amber-500" />
+              <span>GitHub Exploration</span>
+            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+              <Globe className="size-2.5" />
+              <span>Google Search Grounding</span>
+            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              <Radio className="size-2.5" />
+              <span>Live API Voice</span>
+            </span>
           </div>
+
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
-            Discover and explore GitHub
+            Discover GitHub repositories
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-            Search across millions of repositories and developers. Enter any repository name, keyword, or username below to get started.
+            Search millions of projects, dictate via microphone with <span className="font-mono text-xs">gemini-3.5-transcribe</span>, analyze with grounded AI, or hold real-time voice conversations.
           </p>
         </div>
 
-        {/* Search Component Section */}
+        {/* Search Component Section with Mic Audio Recording */}
         <div className="max-w-3xl mx-auto">
           <SearchInput
             value={query}
@@ -120,6 +303,50 @@ export default function Page() {
           />
         </div>
 
+        {/* Feature Highlights Grid */}
+        {!results && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 max-w-4xl mx-auto pt-2">
+            <div
+              onClick={() => setIsAIDrawerOpen(true)}
+              className="p-4 rounded-xl border border-border bg-card/50 hover:bg-card hover:border-foreground/20 cursor-pointer transition-all space-y-1.5"
+            >
+              <div className="size-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                <Globe className="size-4" />
+              </div>
+              <h4 className="font-semibold text-xs text-foreground">Search Grounding</h4>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Ground repository inquiries with Google Search data using gemini-3.5-flash for up-to-date facts.
+              </p>
+            </div>
+
+            <div
+              onClick={() => setIsLiveVoiceOpen(true)}
+              className="p-4 rounded-xl border border-border bg-card/50 hover:bg-card hover:border-foreground/20 cursor-pointer transition-all space-y-1.5"
+            >
+              <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                <Radio className="size-4 animate-pulse" />
+              </div>
+              <h4 className="font-semibold text-xs text-foreground">Live Voice Conversations</h4>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Speak directly to the AI in real time using the gemini-3.8-live model with spoken responses.
+              </p>
+            </div>
+
+            <div
+              onClick={() => setIsBookmarksOpen(true)}
+              className="p-4 rounded-xl border border-border bg-card/50 hover:bg-card hover:border-foreground/20 cursor-pointer transition-all space-y-1.5"
+            >
+              <div className="size-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                <BookMarked className="size-4" />
+              </div>
+              <h4 className="font-semibold text-xs text-foreground">Firebase Cloud Persistence</h4>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Sign in with Google to save repository bookmarks securely to Firebase Cloud Firestore.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Results Section */}
         <div className="max-w-4xl mx-auto">
           <GitHubResults
@@ -128,19 +355,52 @@ export default function Page() {
             rateLimitReset={rateLimitReset}
             results={results}
             onSearchPreset={handleSearchPreset}
+            onBookmarkToggle={handleBookmarkToggle}
+            bookmarkedIds={bookmarkedIds}
+            onAskAI={handleAskAI}
           />
         </div>
       </main>
+
+      {/* Slide-over Drawers and Modals */}
+      <AIAdvisorDrawer
+        isOpen={isAIDrawerOpen}
+        onClose={() => setIsAIDrawerOpen(false)}
+        initialContext={aiContextRepo}
+      />
+
+      <LiveVoiceDialog
+        isOpen={isLiveVoiceOpen}
+        onClose={() => setIsLiveVoiceOpen(false)}
+      />
+
+      <BookmarksModal
+        isOpen={isBookmarksOpen}
+        onClose={() => setIsBookmarksOpen(false)}
+        bookmarks={bookmarks}
+        userId={currentUser?.uid}
+      />
 
       {/* Footer */}
       <footer className="border-t border-border/60 py-6 text-center text-xs text-muted-foreground mt-auto">
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <p>
-            GitFinder LT &mdash; Built with Next.js, TypeScript, Tailwind CSS &amp; shadcn UI
+            GitFinder LT &mdash; Next.js &bull; Tailwind &bull; shadcn &bull; Firebase &bull; Gemini AI
           </p>
-          <p className="text-[11px]">
-            Explore GitHub projects without friction
-          </p>
+          <div className="flex items-center gap-3 text-[11px]">
+            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="size-3" /> Firestore Active
+            </span>
+            <span>&bull;</span>
+            <a
+              href="https://github.com/Quantum9710/gitfinder-lt"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:underline flex items-center gap-1"
+            >
+              <GitBranch className="size-3" /> Quantum9710/gitfinder-lt
+            </a>
+          </div>
         </div>
       </footer>
     </div>

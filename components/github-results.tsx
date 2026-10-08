@@ -10,7 +10,9 @@ import {
   AlertCircle,
   Users,
   Building,
-  CheckCircle2,
+  Bookmark,
+  BookmarkCheck,
+  Bot,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -51,6 +53,9 @@ interface ResultsProps {
     query: string
   } | null
   onSearchPreset?: (query: string, type: 'repositories' | 'users') => void
+  onBookmarkToggle?: (repo: GitHubRepoItem) => void
+  bookmarkedIds?: Set<number>
+  onAskAI?: (repoFullName: string) => void
 }
 
 const LANGUAGE_COLORS: Record<string, string> = {
@@ -95,8 +100,10 @@ export function GitHubResults({
   rateLimitReset,
   results,
   onSearchPreset,
+  onBookmarkToggle,
+  bookmarkedIds = new Set(),
+  onAskAI,
 }: ResultsProps) {
-  // Loading skeleton state
   if (isLoading) {
     return (
       <div className="w-full space-y-4 pt-4">
@@ -130,7 +137,6 @@ export function GitHubResults({
     )
   }
 
-  // Error state
   if (error) {
     return (
       <div className="w-full p-6 my-4 rounded-xl border border-destructive/30 bg-destructive/5 text-center space-y-3">
@@ -148,7 +154,6 @@ export function GitHubResults({
     )
   }
 
-  // Initial empty state before searching
   if (!results) {
     return (
       <div className="w-full py-12 px-4 text-center rounded-2xl border border-dashed border-border/80 bg-muted/20 my-4">
@@ -190,7 +195,6 @@ export function GitHubResults({
     )
   }
 
-  // No items found
   if (results.items.length === 0) {
     return (
       <div className="w-full py-12 px-4 text-center rounded-xl border border-border/60 bg-muted/20 my-4">
@@ -204,7 +208,6 @@ export function GitHubResults({
     )
   }
 
-  // User / Organization results
   if (results.type === 'users') {
     const userItems = results.items as GitHubUserItem[]
     return (
@@ -271,7 +274,6 @@ export function GitHubResults({
     )
   }
 
-  // Repository results
   const repoItems = results.items as GitHubRepoItem[]
 
   return (
@@ -286,6 +288,7 @@ export function GitHubResults({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
         {repoItems.map((repo) => {
           const langColor = repo.language ? LANGUAGE_COLORS[repo.language] || '#8b949e' : null
+          const isBookmarked = bookmarkedIds.has(repo.id)
 
           return (
             <div
@@ -293,7 +296,7 @@ export function GitHubResults({
               className="p-4 rounded-xl border border-border bg-card hover:border-foreground/30 hover:shadow-sm transition-all flex flex-col justify-between space-y-3 group"
             >
               <div className="space-y-2">
-                {/* Header: Owner Avatar & Repo Full Name */}
+                {/* Header: Owner Avatar & Repo Full Name & Actions */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -312,15 +315,43 @@ export function GitHubResults({
                     </a>
                   </div>
 
-                  <a
-                    href={repo.html_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-                    title="Open on GitHub"
-                  >
-                    <ExternalLink className="size-3.5" />
-                  </a>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {onAskAI && (
+                      <button
+                        type="button"
+                        onClick={() => onAskAI(repo.full_name)}
+                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title="Analyze with AI Advisor"
+                      >
+                        <Bot className="size-3.5" />
+                      </button>
+                    )}
+
+                    {onBookmarkToggle && (
+                      <button
+                        type="button"
+                        onClick={() => onBookmarkToggle(repo)}
+                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title={isBookmarked ? 'Remove Firestore bookmark' : 'Save to Firestore'}
+                      >
+                        {isBookmarked ? (
+                          <BookmarkCheck className="size-3.5 text-primary" />
+                        ) : (
+                          <Bookmark className="size-3.5" />
+                        )}
+                      </button>
+                    )}
+
+                    <a
+                      href={repo.html_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      title="Open on GitHub"
+                    >
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  </div>
                 </div>
 
                 {/* Description */}
