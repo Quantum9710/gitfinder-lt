@@ -14,6 +14,7 @@ import { ShortcutsDialog } from '@/components/shortcuts-dialog'
 import { AuthDialog } from '@/components/auth-dialog'
 import { UserProfileMenu } from '@/components/user-profile-menu'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { TrendingRepositories } from '@/components/trending-repositories'
 import {
   auth,
   signInWithGoogle,
@@ -441,16 +442,36 @@ export default function Page() {
 
         {/* Results Section */}
         <div className="max-w-4xl mx-auto">
-          <GitHubResults
-            isLoading={isLoading}
-            error={error}
-            rateLimitReset={rateLimitReset}
-            results={results}
-            onSearchPreset={handleSearchPreset}
-            onBookmarkToggle={handleBookmarkToggle}
-            bookmarkedIds={bookmarkedIds}
-            onAskAI={handleAskAI}
-          />
+          {results ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setResults(null)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  &larr; Back to Trending Repositories
+                </Button>
+              </div>
+              <GitHubResults
+                isLoading={isLoading}
+                error={error}
+                rateLimitReset={rateLimitReset}
+                results={results}
+                onSearchPreset={handleSearchPreset}
+                onBookmarkToggle={handleBookmarkToggle}
+                bookmarkedIds={bookmarkedIds}
+                onAskAI={handleAskAI}
+              />
+            </div>
+          ) : (
+            <TrendingRepositories
+              onBookmarkToggle={handleBookmarkToggle}
+              bookmarkedIds={bookmarkedIds}
+              onAskAI={handleAskAI}
+            />
+          )}
         </div>
       </main>
 
