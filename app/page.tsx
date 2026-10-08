@@ -11,6 +11,8 @@ import { AIAdvisorDrawer } from '@/components/ai-advisor-drawer'
 import { LiveVoiceDialog } from '@/components/live-voice-dialog'
 import { BookmarksModal } from '@/components/bookmarks-modal'
 import { ShortcutsDialog } from '@/components/shortcuts-dialog'
+import { AuthDialog } from '@/components/auth-dialog'
+import { UserProfileMenu } from '@/components/user-profile-menu'
 import {
   auth,
   signInWithGoogle,
@@ -61,6 +63,7 @@ export default function Page() {
   const [isLiveVoiceOpen, setIsLiveVoiceOpen] = React.useState(false)
   const [isBookmarksOpen, setIsBookmarksOpen] = React.useState(false)
   const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false)
+  const [isAuthDialogOpen, setIsAuthDialogOpen] = React.useState(false)
   const [aiContextRepo, setAiContextRepo] = React.useState<string | undefined>(undefined)
 
   // Global Keyboard Shortcuts (Escape, ?, Cmd+J, Cmd+B, Cmd+Shift+V)
@@ -70,7 +73,8 @@ export default function Page() {
 
       // Escape key to dismiss modals/drawers
       if (e.key === 'Escape') {
-        if (isShortcutsOpen) setIsShortcutsOpen(false)
+        if (isAuthDialogOpen) setIsAuthDialogOpen(false)
+        else if (isShortcutsOpen) setIsShortcutsOpen(false)
         else if (isBookmarksOpen) setIsBookmarksOpen(false)
         else if (isLiveVoiceOpen) setIsLiveVoiceOpen(false)
         else if (isAIDrawerOpen) setIsAIDrawerOpen(false)
@@ -112,7 +116,7 @@ export default function Page() {
 
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [isShortcutsOpen, isBookmarksOpen, isLiveVoiceOpen, isAIDrawerOpen])
+  }, [isAuthDialogOpen, isShortcutsOpen, isBookmarksOpen, isLiveVoiceOpen, isAIDrawerOpen])
 
   // Monitor Firebase auth & test connection
   React.useEffect(() => {
@@ -194,12 +198,7 @@ export default function Page() {
 
   const handleBookmarkToggle = async (repo: GitHubRepoItem) => {
     if (!currentUser) {
-      // Prompt sign in
-      try {
-        await signInWithGoogle()
-      } catch (e) {
-        console.error(e)
-      }
+      setIsAuthDialogOpen(true)
       return
     }
 
@@ -307,33 +306,21 @@ export default function Page() {
 
             <div className="h-4 w-px bg-border mx-0.5" />
 
-            {/* Firebase Google Auth Button */}
+            {/* Firebase Google Auth Button & Profile Menu */}
             {authLoading ? (
               <div className="size-8 rounded-full bg-muted animate-pulse" />
             ) : currentUser ? (
-              <div className="flex items-center gap-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={currentUser.photoURL || '/placeholder-user.jpg'}
-                  alt={currentUser.displayName || 'User'}
-                  className="size-7 rounded-full border border-border object-cover"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => logOut()}
-                  className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
-                  title="Sign out"
-                >
-                  <LogOut className="size-3.5" />
-                </Button>
-              </div>
+              <UserProfileMenu
+                user={currentUser}
+                bookmarksCount={bookmarks.length}
+                onOpenBookmarks={() => setIsBookmarksOpen(true)}
+              />
             ) : (
               <Button
                 variant="default"
                 size="sm"
-                onClick={() => signInWithGoogle()}
-                className="h-8 gap-1.5 text-xs"
+                onClick={() => setIsAuthDialogOpen(true)}
+                className="h-8 gap-1.5 text-xs shadow-xs"
               >
                 <LogIn className="size-3.5" />
                 <span>Sign In</span>
@@ -379,6 +366,30 @@ export default function Page() {
             isLoading={isLoading}
           />
         </div>
+
+        {/* Auth prompt banner when not logged in */}
+        {!authLoading && !currentUser && (
+          <div className="max-w-3xl mx-auto p-3.5 rounded-xl border border-border/80 bg-muted/20 backdrop-blur-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 text-muted-foreground">
+              <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <ShieldCheck className="size-4" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">Sign in with Google to enable Cloud Bookmarks</p>
+                <p className="text-[11px]">Save repositories directly to your private Firebase Cloud Firestore collection.</p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAuthDialogOpen(true)}
+              className="h-7.5 text-xs font-medium shrink-0 self-end sm:self-auto gap-1.5"
+            >
+              <LogIn className="size-3.5" />
+              <span>Sign In</span>
+            </Button>
+          </div>
+        )}
 
         {/* Feature Highlights Grid */}
         {!results && (
@@ -461,6 +472,11 @@ export default function Page() {
       <ShortcutsDialog
         isOpen={isShortcutsOpen}
         onClose={() => setIsShortcutsOpen(false)}
+      />
+
+      <AuthDialog
+        isOpen={isAuthDialogOpen}
+        onClose={() => setIsAuthDialogOpen(false)}
       />
 
       {/* Footer */}
