@@ -63,21 +63,46 @@ export function SearchInput({
     }
   }, [])
 
-  // Keyboard shortcut listener (/ or cmd+k to focus)
+  // Keyboard shortcut listener (Cmd+K, /, Cmd+Enter, Cmd+1, Cmd+2)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey
+
+      // Cmd+K or / to focus search
       if (
-        (e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) &&
+        (e.key === '/' || (isCmdOrCtrl && e.key.toLowerCase() === 'k')) &&
         document.activeElement?.tagName !== 'INPUT' &&
         document.activeElement?.tagName !== 'TEXTAREA'
       ) {
         e.preventDefault()
         inputRef.current?.focus()
+        inputRef.current?.select()
+        return
+      }
+
+      // Cmd+Enter to execute search
+      if (isCmdOrCtrl && e.key === 'Enter') {
+        if (query.trim()) {
+          e.preventDefault()
+          handleSubmit()
+        }
+        return
+      }
+
+      // Cmd+1 to switch to Repositories, Cmd+2 to switch to Users
+      if (isCmdOrCtrl && e.key === '1') {
+        e.preventDefault()
+        setSearchType('repositories')
+        if (query.trim()) onSearch(query.trim(), 'repositories', sortBy)
+      } else if (isCmdOrCtrl && e.key === '2') {
+        e.preventDefault()
+        setSearchType('users')
+        if (query.trim()) onSearch(query.trim(), 'users', sortBy)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [query, searchType, sortBy])
 
   const saveRecentSearch = (text: string) => {
     const trimmed = text.trim()
@@ -238,6 +263,18 @@ export function SearchInput({
             type="text"
             value={query}
             onChange={handleInputChange}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault()
+                handleSubmit()
+              } else if (e.key === 'Escape') {
+                if (query) {
+                  handleClear()
+                } else {
+                  inputRef.current?.blur()
+                }
+              }
+            }}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setTimeout(() => setIsFocused(false), 200)}
             placeholder={dynamicPlaceholder}
@@ -281,17 +318,21 @@ export function SearchInput({
               type="submit"
               disabled={isLoading || !query.trim()}
               size="sm"
-              className="h-8.5 px-3.5 rounded-lg font-medium shadow-xs transition-transform active:scale-95"
+              title="Execute search (Enter or Cmd+Enter)"
+              className="h-8.5 px-3.5 rounded-lg font-medium shadow-xs transition-transform active:scale-95 gap-1.5"
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="size-3.5 animate-spin mr-1" />
+                  <Loader2 className="size-3.5 animate-spin" />
                   <span>Searching</span>
                 </>
               ) : (
                 <>
-                  <Search className="size-3.5 mr-1" />
+                  <Search className="size-3.5" />
                   <span>Search</span>
+                  <kbd className="hidden sm:inline-flex text-[9px] font-mono px-1 py-0.2 bg-primary-foreground/20 rounded font-semibold text-primary-foreground">
+                    ↵
+                  </kbd>
                 </>
               )}
             </Button>

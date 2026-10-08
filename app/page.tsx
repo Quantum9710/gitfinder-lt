@@ -10,6 +10,7 @@ import {
 import { AIAdvisorDrawer } from '@/components/ai-advisor-drawer'
 import { LiveVoiceDialog } from '@/components/live-voice-dialog'
 import { BookmarksModal } from '@/components/bookmarks-modal'
+import { ShortcutsDialog } from '@/components/shortcuts-dialog'
 import {
   auth,
   signInWithGoogle,
@@ -33,6 +34,7 @@ import {
   Globe,
   Mic,
   ShieldCheck,
+  Keyboard,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -58,7 +60,59 @@ export default function Page() {
   const [isAIDrawerOpen, setIsAIDrawerOpen] = React.useState(false)
   const [isLiveVoiceOpen, setIsLiveVoiceOpen] = React.useState(false)
   const [isBookmarksOpen, setIsBookmarksOpen] = React.useState(false)
+  const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false)
   const [aiContextRepo, setAiContextRepo] = React.useState<string | undefined>(undefined)
+
+  // Global Keyboard Shortcuts (Escape, ?, Cmd+J, Cmd+B, Cmd+Shift+V)
+  React.useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey
+
+      // Escape key to dismiss modals/drawers
+      if (e.key === 'Escape') {
+        if (isShortcutsOpen) setIsShortcutsOpen(false)
+        else if (isBookmarksOpen) setIsBookmarksOpen(false)
+        else if (isLiveVoiceOpen) setIsLiveVoiceOpen(false)
+        else if (isAIDrawerOpen) setIsAIDrawerOpen(false)
+        return
+      }
+
+      // '?' key or Cmd+/ (when not typing in an input) toggles shortcuts dialog
+      if (
+        (e.key === '?' || (isCmdOrCtrl && e.key === '/')) &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA'
+      ) {
+        e.preventDefault()
+        setIsShortcutsOpen((prev) => !prev)
+        return
+      }
+
+      // Cmd+J toggles AI Advisor
+      if (isCmdOrCtrl && e.key.toLowerCase() === 'j') {
+        e.preventDefault()
+        setIsAIDrawerOpen((prev) => !prev)
+        return
+      }
+
+      // Cmd+B toggles Bookmarks
+      if (isCmdOrCtrl && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        setIsBookmarksOpen((prev) => !prev)
+        return
+      }
+
+      // Cmd+Shift+V toggles Live Voice dialog
+      if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault()
+        setIsLiveVoiceOpen((prev) => !prev)
+        return
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [isShortcutsOpen, isBookmarksOpen, isLiveVoiceOpen, isAIDrawerOpen])
 
   // Monitor Firebase auth & test connection
   React.useEffect(() => {
@@ -187,10 +241,13 @@ export default function Page() {
               size="sm"
               onClick={() => setIsLiveVoiceOpen(true)}
               className="h-8 gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
-              title="Live Voice Conversation (gemini-3.8-live)"
+              title="Live Voice Conversation (gemini-3.8-live) - Shortcut: Cmd+Shift+V"
             >
               <Radio className="size-3.5 animate-pulse text-emerald-500" />
               <span className="hidden sm:inline">Live Voice</span>
+              <kbd className="hidden lg:inline text-[9px] font-mono px-1 py-0.2 bg-muted/60 border border-border rounded opacity-75">
+                ⌘⇧V
+              </kbd>
             </Button>
 
             {/* AI Advisor with Search Grounding Button */}
@@ -202,13 +259,16 @@ export default function Page() {
                 setIsAIDrawerOpen(true)
               }}
               className="h-8 gap-1.5 text-xs"
-              title="AI Advisor with Google Search Grounding"
+              title="AI Advisor with Google Search Grounding - Shortcut: Cmd+J"
             >
               <Bot className="size-3.5 text-primary" />
               <span className="hidden sm:inline">AI Advisor</span>
               <span className="hidden md:inline-flex items-center gap-0.5 text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1 py-0.2 rounded font-medium">
                 <Globe className="size-2.5" /> Grounded
               </span>
+              <kbd className="hidden lg:inline text-[9px] font-mono px-1 py-0.2 bg-muted/60 border border-border rounded opacity-75">
+                ⌘J
+              </kbd>
             </Button>
 
             {/* Bookmarks Modal Button */}
@@ -217,7 +277,7 @@ export default function Page() {
               size="sm"
               onClick={() => setIsBookmarksOpen(true)}
               className="h-8 gap-1.5 text-xs relative"
-              title="Saved Firestore Bookmarks"
+              title="Saved Firestore Bookmarks - Shortcut: Cmd+B"
             >
               <BookMarked className="size-3.5" />
               <span className="hidden sm:inline">Bookmarks</span>
@@ -226,6 +286,23 @@ export default function Page() {
                   {bookmarks.length}
                 </span>
               )}
+              <kbd className="hidden lg:inline text-[9px] font-mono px-1 py-0.2 bg-muted/60 border border-border rounded opacity-75">
+                ⌘B
+              </kbd>
+            </Button>
+
+            {/* Keyboard Shortcuts Cheat Sheet Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsShortcutsOpen(true)}
+              className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+              title="Keyboard Shortcuts Cheat Sheet (?)"
+            >
+              <Keyboard className="size-3.5" />
+              <kbd className="hidden md:inline text-[9px] font-mono px-1 py-0.2 bg-muted/60 border border-border rounded opacity-75">
+                ?
+              </kbd>
             </Button>
 
             <div className="h-4 w-px bg-border mx-0.5" />
@@ -379,6 +456,11 @@ export default function Page() {
         onClose={() => setIsBookmarksOpen(false)}
         bookmarks={bookmarks}
         userId={currentUser?.uid}
+      />
+
+      <ShortcutsDialog
+        isOpen={isShortcutsOpen}
+        onClose={() => setIsShortcutsOpen(false)}
       />
 
       {/* Footer */}
