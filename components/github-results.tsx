@@ -14,8 +14,11 @@ import {
   BookmarkCheck,
   Bot,
   Download,
+  Scale,
+  RotateCcw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ResultsFilterBar, FilterState } from '@/components/results-filter-bar'
 
 export interface GitHubRepoItem {
   id: number
@@ -28,6 +31,12 @@ export interface GitHubRepoItem {
   language: string | null
   updated_at: string
   topics?: string[]
+  license?: {
+    key: string
+    name: string
+    spdx_id?: string
+    url?: string | null
+  } | null
   owner: {
     login: string
     avatar_url: string
@@ -105,14 +114,80 @@ export function GitHubResults({
   bookmarkedIds = new Set(),
   onAskAI,
 }: ResultsProps) {
+  const [filters, setFilters] = React.useState<FilterState>({
+    language: 'all',
+    license: 'all',
+    minStars: 0,
+  })
+
+  // Extract raw repository items
+  const rawRepoItems = React.useMemo(() => {
+    return results && results.type === 'repositories'
+      ? (results.items as GitHubRepoItem[])
+      : []
+  }, [results])
+
+  // Compute available languages in results
+  const availableLanguages = React.useMemo(() => {
+    const set = new Set<string>()
+    rawRepoItems.forEach((r) => {
+      if (r.language) set.add(r.language)
+    })
+    return Array.from(set).sort()
+  }, [rawRepoItems])
+
+  // Compute available licenses in results
+  const availableLicenses = React.useMemo(() => {
+    const set = new Set<string>()
+    rawRepoItems.forEach((r) => {
+      const lic = r.license?.spdx_id || r.license?.name
+      if (lic && lic !== 'NOASSERTION') set.add(lic)
+    })
+    return Array.from(set).sort()
+  }, [rawRepoItems])
+
+  // Filtered repository items based on active criteria
+  const filteredRepoItems = React.useMemo(() => {
+    return rawRepoItems.filter((repo) => {
+      // Language filter
+      if (filters.language !== 'all') {
+        if (!repo.language || repo.language.toLowerCase() !== filters.language.toLowerCase()) {
+          return false
+        }
+      }
+
+      // License filter
+      if (filters.license !== 'all') {
+        const lic = repo.license?.spdx_id || repo.license?.name || ''
+        if (lic.toLowerCase() !== filters.license.toLowerCase()) {
+          return false
+        }
+      }
+
+      // Minimum Stars filter
+      if (filters.minStars > 0) {
+        if ((repo.stargazers_count || 0) < filters.minStars) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [rawRepoItems, filters])
+
   const handleDownloadResults = () => {
     if (!results || !results.items.length) return
+    const exportItems =
+      results.type === 'repositories' ? filteredRepoItems : results.items
+
     const exportData = {
       query: results.query,
       type: results.type,
       total_count: results.total_count,
+      exported_count: exportItems.length,
+      filters: results.type === 'repositories' ? filters : undefined,
       exported_at: new Date().toISOString(),
-      items: results.items,
+      items: exportItems,
     }
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: 'application/json',
@@ -308,14 +383,12 @@ export function GitHubResults({
     )
   }
 
-  const repoItems = results.items as GitHubRepoItem[]
-
   return (
     <div className="w-full space-y-4 pt-4">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground px-1 pb-1">
         <div>
           Found <strong className="text-foreground">{results.total_count.toLocaleString()}</strong> repositories
-          <span className="ml-2 text-muted-foreground/80">&bull; Showing top {repoItems.length}</span>
+          <span className="ml-2 text-muted-foreground/80">&bull; Showing {filteredRepoItems.length} of {rawRepoItems.length}</span>
         </div>
         <Button
           variant="outline"
@@ -329,127 +402,178 @@ export function GitHubResults({
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-        {repoItems.map((repo) => {
-          const langColor = repo.language ? LANGUAGE_COLORS[repo.language] || '#8b949e' : null
-          const isBookmarked = bookmarkedIds.has(repo.id)
+      {/* Results Filtering UI Component */}
+      <ResultsFilterBar
+        availableLanguages={availableLanguages}
+        availableLicenses={availableLicenses}
+        filters={filters}
+        onFilterChange={setFilters}
+        totalCount={rawRepoItems.length}
+        filteredCount={filteredRepoItems.length}
+      />
 
-          return (
-            <div
-              key={repo.id}
-              className="p-4 rounded-xl border border-border bg-card hover:border-foreground/30 hover:shadow-sm transition-all flex flex-col justify-between space-y-3 group"
-            >
-              <div className="space-y-2">
-                {/* Header: Owner Avatar & Repo Full Name & Actions */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={repo.owner.avatar_url}
-                      alt={repo.owner.login}
-                      className="size-6 rounded-full border border-border/80 object-cover shrink-0"
-                    />
-                    <a
-                      href={repo.html_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-semibold text-sm text-foreground hover:underline truncate group-hover:text-primary transition-colors flex items-center gap-1"
-                    >
-                      <span className="truncate">{repo.full_name}</span>
-                    </a>
-                  </div>
+      {filteredRepoItems.length === 0 ? (
+        <div className="w-full py-12 px-4 text-center rounded-xl border border-dashed border-border/80 bg-muted/20 space-y-3">
+          <p className="text-sm font-medium text-foreground">
+            No repositories match the active filters
+          </p>
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+            Try resetting or expanding your language, license, or star criteria.
+          </p>
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() =>
+              setFilters({
+                language: 'all',
+                license: 'all',
+                minStars: 0,
+              })
+            }
+            className="gap-1.5"
+          >
+            <RotateCcw className="size-3" />
+            <span>Reset Filters</span>
+          </Button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {filteredRepoItems.map((repo) => {
+            const langColor = repo.language ? LANGUAGE_COLORS[repo.language] || '#8b949e' : null
+            const isBookmarked = bookmarkedIds.has(repo.id)
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    {onAskAI && (
-                      <button
-                        type="button"
-                        onClick={() => onAskAI(repo.full_name)}
-                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                        title="Analyze with AI Advisor"
-                      >
-                        <Bot className="size-3.5" />
-                      </button>
-                    )}
-
-                    {onBookmarkToggle && (
-                      <button
-                        type="button"
-                        onClick={() => onBookmarkToggle(repo)}
-                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                        title={isBookmarked ? 'Remove Firestore bookmark' : 'Save to Firestore'}
-                      >
-                        {isBookmarked ? (
-                          <BookmarkCheck className="size-3.5 text-primary" />
-                        ) : (
-                          <Bookmark className="size-3.5" />
-                        )}
-                      </button>
-                    )}
-
-                    <a
-                      href={repo.html_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      title="Open on GitHub"
-                    >
-                      <ExternalLink className="size-3.5" />
-                    </a>
-                  </div>
-                </div>
-
-                {/* Description */}
-                <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                  {repo.description || 'No description provided.'}
-                </p>
-
-                {/* Topics / Tags */}
-                {repo.topics && repo.topics.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {repo.topics.slice(0, 4).map((topic) => (
-                      <span
-                        key={topic}
-                        className="text-[10px] px-1.5 py-0.5 rounded-md bg-secondary/80 text-secondary-foreground font-mono"
-                      >
-                        #{topic}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Meta stats footer */}
-              <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/60">
-                <div className="flex items-center gap-3.5">
-                  <span className="flex items-center gap-1 hover:text-foreground">
-                    <Star className="size-3.5 text-amber-500 fill-amber-500/20" />
-                    <span>{formatNumber(repo.stargazers_count)}</span>
-                  </span>
-                  <span className="flex items-center gap-1 hover:text-foreground">
-                    <GitFork className="size-3.5" />
-                    <span>{formatNumber(repo.forks_count)}</span>
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  {repo.language && (
-                    <span className="flex items-center gap-1.5 font-medium text-[11px]">
-                      <Circle
-                        className="size-2.5 fill-current"
-                        style={{ color: langColor || undefined }}
+            return (
+              <div
+                key={repo.id}
+                className="p-4 rounded-xl border border-border bg-card hover:border-foreground/30 hover:shadow-sm transition-all flex flex-col justify-between space-y-3 group"
+              >
+                <div className="space-y-2">
+                  {/* Header: Owner Avatar & Repo Full Name & Actions */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={repo.owner.avatar_url}
+                        alt={repo.owner.login}
+                        className="size-6 rounded-full border border-border/80 object-cover shrink-0"
                       />
-                      <span>{repo.language}</span>
-                    </span>
+                      <a
+                        href={repo.html_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-sm text-foreground hover:underline truncate group-hover:text-primary transition-colors flex items-center gap-1"
+                      >
+                        <span className="truncate">{repo.full_name}</span>
+                      </a>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {onAskAI && (
+                        <button
+                          type="button"
+                          onClick={() => onAskAI(repo.full_name)}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          title="Analyze with AI Advisor"
+                        >
+                          <Bot className="size-3.5" />
+                        </button>
+                      )}
+
+                      {onBookmarkToggle && (
+                        <button
+                          type="button"
+                          onClick={() => onBookmarkToggle(repo)}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          title={isBookmarked ? 'Remove Firestore bookmark' : 'Save to Firestore'}
+                        >
+                          {isBookmarked ? (
+                            <BookmarkCheck className="size-3.5 text-primary" />
+                          ) : (
+                            <Bookmark className="size-3.5" />
+                          )}
+                        </button>
+                      )}
+
+                      <a
+                        href={repo.html_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title="Open on GitHub"
+                      >
+                        <ExternalLink className="size-3.5" />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                    {repo.description || 'No description provided.'}
+                  </p>
+
+                  {/* Topics / Tags */}
+                  {repo.topics && repo.topics.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {repo.topics.slice(0, 4).map((topic) => (
+                        <span
+                          key={topic}
+                          className="text-[10px] px-1.5 py-0.5 rounded-md bg-secondary/80 text-secondary-foreground font-mono"
+                        >
+                          #{topic}
+                        </span>
+                      ))}
+                    </div>
                   )}
-                  <span className="text-[11px] text-muted-foreground/80 hidden sm:inline">
-                    Updated {formatDate(repo.updated_at)}
-                  </span>
+                </div>
+
+                {/* Meta stats footer */}
+                <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/60">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1 hover:text-foreground">
+                      <Star className="size-3.5 text-amber-500 fill-amber-500/20" />
+                      <span>{formatNumber(repo.stargazers_count)}</span>
+                    </span>
+                    <span className="flex items-center gap-1 hover:text-foreground">
+                      <GitFork className="size-3.5" />
+                      <span>{formatNumber(repo.forks_count)}</span>
+                    </span>
+
+                    {/* License Badge */}
+                    {repo.license && (
+                      <span
+                        className="hidden sm:inline-flex items-center gap-1 hover:text-foreground truncate max-w-[90px]"
+                        title={`License: ${repo.license.name}`}
+                      >
+                        <Scale className="size-3 text-muted-foreground/70" />
+                        <span className="truncate text-[11px]">
+                          {repo.license.spdx_id && repo.license.spdx_id !== 'NOASSERTION'
+                            ? repo.license.spdx_id
+                            : repo.license.name}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {repo.language && (
+                      <span className="flex items-center gap-1.5 font-medium text-[11px]">
+                        <Circle
+                          className="size-2.5 fill-current"
+                          style={{ color: langColor || undefined }}
+                        />
+                        <span>{repo.language}</span>
+                      </span>
+                    )}
+                    <span className="text-[11px] text-muted-foreground/80 hidden sm:inline">
+                      Updated {formatDate(repo.updated_at)}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
