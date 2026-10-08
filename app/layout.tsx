@@ -1,11 +1,13 @@
-import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'gitfinder',
-  description: 'Created with v0',
-  generator: 'v0.app',
+  title: 'GitFinder LT',
+  description: 'A modern GitHub repository discovery and exploration platform built with Next.js, React, TypeScript, and Tailwind CSS.',
+  openGraph: {
+    title: 'GitFinder LT',
+    description: 'A modern GitHub repository discovery and exploration platform built with Next.js, React, TypeScript, and Tailwind CSS.',
+  },
   icons: {
     icon: [
       {
@@ -42,7 +44,6 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         {children}
-        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   )

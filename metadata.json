@@ -1,0 +1,7 @@
+{
+  "name": "GitFinder LT",
+  "description": "A modern GitHub repository discovery and exploration platform built with Next.js, React, TypeScript, and Tailwind CSS.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
