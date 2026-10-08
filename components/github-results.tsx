@@ -13,6 +13,7 @@ import {
   Bookmark,
   BookmarkCheck,
   Bot,
+  Download,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -104,6 +105,29 @@ export function GitHubResults({
   bookmarkedIds = new Set(),
   onAskAI,
 }: ResultsProps) {
+  const handleDownloadResults = () => {
+    if (!results || !results.items.length) return
+    const exportData = {
+      query: results.query,
+      type: results.type,
+      total_count: results.total_count,
+      exported_at: new Date().toISOString(),
+      items: results.items,
+    }
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: 'application/json',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const safeQuery = results.query.replace(/[^a-zA-Z0-9_-]/g, '_') || 'results'
+    a.download = `gitfinder-${results.type}-${safeQuery}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   if (isLoading) {
     return (
       <div className="w-full space-y-4 pt-4">
@@ -212,11 +236,21 @@ export function GitHubResults({
     const userItems = results.items as GitHubUserItem[]
     return (
       <div className="w-full space-y-4 pt-4">
-        <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-          <span>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground px-1 pb-1">
+          <div>
             Found <strong className="text-foreground">{results.total_count.toLocaleString()}</strong> users & organizations
-          </span>
-          <span>Showing top {userItems.length}</span>
+            <span className="ml-2 text-muted-foreground/80">&bull; Showing top {userItems.length}</span>
+          </div>
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={handleDownloadResults}
+            className="gap-1.5 text-xs h-7 text-muted-foreground hover:text-foreground"
+            title="Export search results as JSON file"
+          >
+            <Download className="size-3.5" />
+            <span>Download Results</span>
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -278,11 +312,21 @@ export function GitHubResults({
 
   return (
     <div className="w-full space-y-4 pt-4">
-      <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-        <span>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground px-1 pb-1">
+        <div>
           Found <strong className="text-foreground">{results.total_count.toLocaleString()}</strong> repositories
-        </span>
-        <span>Showing top {repoItems.length}</span>
+          <span className="ml-2 text-muted-foreground/80">&bull; Showing top {repoItems.length}</span>
+        </div>
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={handleDownloadResults}
+          className="gap-1.5 text-xs h-7 text-muted-foreground hover:text-foreground"
+          title="Export search results as JSON file"
+        >
+          <Download className="size-3.5" />
+          <span>Download Results</span>
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
