@@ -13,6 +13,7 @@ import { BookmarksModal } from '@/components/bookmarks-modal'
 import { ShortcutsDialog } from '@/components/shortcuts-dialog'
 import { AuthDialog } from '@/components/auth-dialog'
 import { UserProfileMenu } from '@/components/user-profile-menu'
+import { ThemeToggle } from '@/components/theme-toggle'
 import {
   auth,
   signInWithGoogle,
@@ -303,6 +304,9 @@ export default function Page() {
                 ?
               </kbd>
             </Button>
+
+            {/* Sliding Theme Toggle (Dark / Light) */}
+            <ThemeToggle />
 
             <div className="h-4 w-px bg-border mx-0.5" />
 
